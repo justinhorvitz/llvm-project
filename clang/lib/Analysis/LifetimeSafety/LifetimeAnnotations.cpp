@@ -255,4 +255,33 @@ template <typename T> static bool isRecordWithAttr(QualType Type) {
 bool isGslPointerType(QualType QT) { return isRecordWithAttr<PointerAttr>(QT); }
 bool isGslOwnerType(QualType QT) { return isRecordWithAttr<OwnerAttr>(QT); }
 
+bool isContainerInvalidationMethod(const CXXMethodDecl *MD) {
+  if (!MD)
+    return false;
+  const CXXRecordDecl *RD = MD->getParent();
+  if (!RD || !isInStlNamespace(RD))
+    return false;
+  StringRef ContainerName;
+  if (const auto *CTSD = dyn_cast<ClassTemplateSpecializationDecl>(RD))
+    ContainerName = CTSD->getSpecializedTemplate()->getName();
+  else if (RD->getIdentifier())
+    ContainerName = RD->getName();
+  else
+    return false;
+  static llvm::StringSet<> Containers = {
+      "vector",        "basic_string",
+      "queue",         "deque",
+      "set",           "multiset",
+      "map",           "multimap",
+      "unordered_set", "unordered_multiset",
+      "unordered_map", "unordered_multimap",
+  };
+  static const llvm::StringSet<> InvalidatingMembers = {
+      "push_back", "emplace_back", "insert",   "erase", "resize",
+      "clear",     "emplace",      "pop_back", "swap"};
+
+  return Containers.contains(ContainerName) && MD->getIdentifier() &&
+         InvalidatingMembers.contains(MD->getName());
+} // namespace clang::lifetimes
+
 } // namespace clang::lifetimes
